@@ -1,0 +1,154 @@
+import numpy as np
+import pandas as pd
+import os
+import plotly.express as px
+import matplotlib.pyplot as plt
+import seaborn as sns
+import joblib
+
+from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import train_test_split, GridSearchCV, cross_val_score
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.linear_model import LinearRegression, Ridge, Lasso
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+
+data = pd.read_csv("Electric_Vehicle_Population_Data.csv")
+
+data.head()
+
+
+preproccessed_data = pd.read_csv("Preproccessed_Data_EV.csv")
+
+X = preproccessed_data.drop('Electric Range', axis=1)
+y = preproccessed_data['Electric Range']
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+categorical_features = ['State', 'Postal Code', 'Make', 'Model']
+numerical_features = ['Model Year', 'Average Weather']
+
+numerical_transformer = StandardScaler()
+categorical_transformer = OneHotEncoder(handle_unknown='ignore')
+
+preprocessor = ColumnTransformer(
+    transformers=[
+        ('num', numerical_transformer, numerical_features),
+        ('cat', categorical_transformer, categorical_features)
+    ])
+
+
+lr_pipeline = Pipeline(steps=[('preprocessor', preprocessor),
+                              ('model', LinearRegression())])
+
+lr_pipeline.fit(X_train, y_train)
+
+y_pred = lr_pipeline.predict(X_test)
+print("Linear Regression")
+print("R^2:", r2_score(y_test, y_pred))
+print("MAE:", mean_absolute_error(y_test, y_pred))
+print("MSE:", mean_squared_error(y_test, y_pred))
+
+rf_pipeline = Pipeline(steps=[('preprocessor', preprocessor),
+                              ('model', RandomForestRegressor(random_state=42))])
+
+rf_pipeline.fit(X_train, y_train)
+
+y_pred_rf = rf_pipeline.predict(X_test)
+print("Random Forest")
+print("R^2:", r2_score(y_test, y_pred_rf))
+print("MAE:", mean_absolute_error(y_test, y_pred_rf))
+print("MSE:", mean_squared_error(y_test, y_pred_rf))
+
+param_grid = {
+    'model__n_estimators': [100, 200, 300],
+    'model__max_depth': [None, 10, 20, 30],
+    'model__min_samples_split': [2, 5, 10]
+}
+
+grid_search = GridSearchCV(rf_pipeline, param_grid, cv=5, n_jobs=-1, scoring='neg_mean_squared_error')
+grid_search.fit(X_train, y_train)
+
+print("Best Parameters:", grid_search.best_params_)
+print("Best Score:", grid_search.best_score_)
+
+gb_pipeline = Pipeline(steps=[('preprocessor', preprocessor),
+                              ('model', GradientBoostingRegressor(random_state=42))])
+
+param_grid_gb = {
+    'model__n_estimators': [100, 200, 300],
+    'model__max_depth': [3, 5, 7],
+    'model__learning_rate': [0.01, 0.1, 0.2]
+}
+
+grid_search_gb = GridSearchCV(gb_pipeline, param_grid_gb, cv=5, n_jobs=-1, verbose=2)
+grid_search_gb.fit(X_train, y_train)
+
+y_pred_test_gb = grid_search_gb.best_estimator_.predict(X_test)
+
+mse_test_gb = mean_squared_error(y_test, y_pred_test_gb)
+mae_test_gb = mean_absolute_error(y_test, y_pred_test_gb)
+r2_test_gb = r2_score(y_test, y_pred_test_gb)
+
+print("Gradient Boosting - Test Data Evaluation")
+print("Mean Squared Error (MSE):", mse_test_gb)
+print("Mean Absolute Error (MAE):", mae_test_gb)
+print("R^2 Score:", r2_test_gb)
+
+y_pred_rf = grid_search.best_estimator_.predict(X_test)
+y_pred_gb = grid_search.best_estimator_.predict(X_test)
+
+y_pred_ensemble = (y_pred_rf + y_pred_gb) / 2
+
+mse_ensemble = mean_squared_error(y_test, y_pred_ensemble)
+mae_ensemble = mean_absolute_error(y_test, y_pred_ensemble)
+r2_ensemble = r2_score(y_test, y_pred_ensemble)
+
+print("Ensemble Model - Test Data Evaluation")
+print("Mean Squared Error (MSE):", mse_ensemble)
+print("Mean Absolute Error (MAE):", mae_ensemble)
+print("R^2 Score:", r2_ensemble)
+
+
+models = ['Linear Regression', 'Random Forest', 'Gradient Boosting', 'Ensemble']
+r2_scores = [0.5148, 0.9802, 0.9838, 0.9826]
+mae_scores = [45.81, 1.89, 2.62, 2.35]
+mse_scores = [4224.07, 171.96, 140.62, 150.73]
+
+fig, ax = plt.subplots(3, 1, figsize=(10,15))
+
+bars_r2 = ax[0].bar(models, r2_scores, color = ['blue', 'green'])
+ax[0].set_title('R^2 Scores')
+ax[0].set_ylabel('R^2')
+ax[0].set_ylim(0, 1.1)
+
+for bar in bars_r2:
+    yval = bar.get_height()
+    ax[0].text(bar.get_x() + bar.get_width()/2, yval, round(yval, 4), ha='center', va='bottom')
+
+bars_mae = ax[1].bar(models, mae_scores, color = ['blue', 'green'])
+ax[1].set_title('MAE Scores')
+ax[1].set_ylabel('Mean Absolute Error')
+
+for bar in bars_mae:
+    yval = bar.get_height()
+    ax[1].text(bar.get_x() + bar.get_width()/2, yval, round(yval, 2), ha='center', va='bottom')
+
+bars_mse = ax[2].bar(models, mse_scores, color = ['blue', 'green'])
+ax[2].set_title('MSE Scores')
+ax[2].set_ylabel('Mean Squared Error')
+
+for bar in bars_mse:
+    yval = bar.get_height()
+    ax[2].text(bar.get_x() + bar.get_width()/2, yval, round(yval, 2), ha='center', va='bottom')
+
+plt.tight_layout()
+plt.show()
+
+joblib.dump(grid_search_gb.best_estimator_, 'gradient_boosting_model.pk1')
+
+joblib.dump(grid_search.best_estimator_, 'random_forest_model.pk1')
+
+joblib.dump(y_pred_ensemble, 'ensemble_prediction.pk1')
