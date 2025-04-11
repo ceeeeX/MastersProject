@@ -1,0 +1,175 @@
+import numpy as np
+import pandas as pd
+import os
+import plotly.express as px
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import train_test_split, GridSearchCV, cross_val_score
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.linear_model import LinearRegression, Ridge, Lasso
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+
+data = pd.read_csv("Electric_Vehicle_Population_Data.csv")
+
+data.head()
+
+data.drop(["County", "City", "DOL Vehicle ID", "Base MSRP", "Electric Utility", "VIN (1-10)", "2020 Census Tract", "Legislative District"], axis=1, inplace=True)
+data.rename(columns={'Clean Alternative Fuel Vehicle (CAFV) Eligibility': 'Clean Alternative Fuel Vehicle (CAFV)'}, inplace=True)
+
+labelEncoder = LabelEncoder()
+
+data['Electric Vehicle Type'] = labelEncoder.fit_transform(data['Electric Vehicle Type'])
+data['Clean Alternative Fuel Vehicle (CAFV)'] = labelEncoder.fit_transform(data['Clean Alternative Fuel Vehicle (CAFV)'])
+
+zipCodes = data['Postal Code'].unique()
+print(zipCodes.shape)
+
+zipCodes = np.array(zipCodes, dtype=int).astype(str)
+def format_zipcode(zipcode):
+
+    if pd.isna(zipcode):
+        return zipcode
+    else:
+        return f'{int(zipcode):05d}'
+    
+zipCodes = np.vectorize(format_zipcode)(zipCodes)
+
+
+processed_zipCodes = data['Postal Code']
+
+processed_zipCodes = np.vectorize(format_zipcode)(processed_zipCodes)
+data['Postal Code'] = processed_zipCodes
+print(data['Postal Code'])
+print(zipCodes)
+
+##print(zipCodes[59])
+##print(zipCodes[484])
+print(data['Postal Code'][0])
+
+import requests, json
+
+API_KEY = "cf312c3203aee8bb79eb8f7451924a72" ##
+## API_KEY = "b161b4155add0efffae9a602b927aac8" ##
+## API_KEY = "bbcf971ae98ba112215dbda5a2a5fb10" ##
+BASE_URL = "http://api.openweathermap.org/data/2.5/weather"
+
+def get_avg_temperature(zip_code, country_code="us"):
+    request_url = f"{BASE_URL}?zip={zip_code},{country_code}&appid={API_KEY}&units=imperial"
+    response = requests.get(request_url)
+
+    if response.status_code == 200:
+        data = response.json()
+
+        temperature = data['main']['temp']
+        return temperature
+    else:
+        print(f"Error fetching data for {zip_code}: {response.status_code}")
+        return None
+
+def get_temp_for_zip_codes(zip_codes):
+    temperatures = []
+
+    for zip_code in zip_codes:
+        temperature = get_avg_temperature(zip_code)
+        if temperature is not None:
+            temperatures.append(temperature)
+    return temperatures
+
+zip_code_test = ["10001", "90210", "33101"]
+
+avg_temperatures = get_temp_for_zip_codes(zipCodes)
+
+print(avg_temperatures)
+
+avg_temperatures = np.array(avg_temperatures)
+avg_temperatures = np.insert(avg_temperatures, 59, 0)
+avg_temperatures = np.insert(avg_temperatures, 484, 0)
+avg_temperatures.shape
+
+
+data['Average Weather'] = np.nan
+for i in range(166800):
+    for q in range(837):
+        if data['Postal Code'][i] == zipCodes[q]:
+            data.loc[i, 'Average Weather'] = avg_temperatures[q]
+            #data['Average Weather'][i] = avg_temperatures[q]
+    
+data.head()
+
+data['Postal Code'] = data['Postal Code'].astype(str).str.replace('.0', '', regex=False)
+
+data.to_csv('Preproccessed_Data_EV')
+
+preproccessed_data = pd.read_csv("Preproccessed_Data_EV.csv")
+
+fig = px.box(preproccessed_data, y="Make", x="State", title="Distribution of Car Brands Across States")
+fig.update_layout(width=1000,height=800)
+fig.show()
+
+fig = px.box(preproccessed_data, y="Electric Range", x="Make", title="Distribution of Electric Range Across Car Brands")
+fig.update_layout(width=1000,height=800)
+fig.show()
+
+fig = px.box(preproccessed_data, y="Postal Code", x="Make", title="Distribution of Car Brands Across Postal Codes")
+fig.update_layout(width=1000,height=800)
+fig.show()
+
+carCounts = preproccessed_data["Make"].value_counts()
+fig = px.histogram(preproccessed_data, x="Make", title="Counts of Cars")
+fig.update_layout(width=1000,height=800)
+fig.show()
+
+EVTypeCounts = preproccessed_data["Electric Vehicle Type"].value_counts()
+labels = ['Battery Electric Vehicle (BEV)', 'Plug-in Hybrid Electric Vehicle (PHEV)']
+
+plt.figure(figsize=(5,5))
+plt.pie(EVTypeCounts, labels=labels)
+plt.title("Proportion of Electric Vehicle Types")
+plt.axis('equal')
+plt.show()
+
+plt.figure(figsize=(10,8))
+plt.scatter(preproccessed_data['Model Year'], data['Electric Range'], alpha=0.5)
+plt.xlabel('Model Year')
+plt.ylabel('Electric Range')
+plt.title('Electric Range vs. Model Year')
+plt.grid(True)
+plt.show()
+
+fig = px.box(preproccessed_data, y="Average Weather", x="Electric Range", title="Distribution of Average Temperature Across Electric Vehicles")
+fig.update_layout(width=1000,height=800)
+fig.show()
+
+fig = px.box(preproccessed_data, y="Postal Code", x="Average Weather", title="Distribution of Average Temperature Across Postal Codes")
+fig.update_layout(width=1000,height=800)
+fig.show()
+
+fig = px.box(preproccessed_data, x="Electric Range", y="Average Weather", title="Distribution of Average Temperature Across Electric Range")
+fig.update_layout(width=1000,height=800)
+fig.show()
+
+
+preproccessed_data.dropna(inplace=True)
+print(preproccessed_data)
+
+data = pd.read_csv('Preproccessed_Data_EV.csv')
+
+label_encoder = LabelEncoder()
+data['State'] = label_encoder.fit_transform(data['State'])
+data['Make'] = label_encoder.fit_transform(data['Make'])
+data['Model'] = label_encoder.fit_transform(data['Model'])
+data = data.drop('Vehicle Location', axis=1)
+
+corr_matrix = data.corr()
+print(corr_matrix)
+
+plt.figure(figsize=(10,10))
+
+sns.heatmap(corr_matrix, annot=True, fmt='.2f', cmap='coolwarm', square=True, linewidths=.5)
+plt.title('Correlation Matrix', size=20)
+plt.show()
