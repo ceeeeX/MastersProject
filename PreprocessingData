@@ -53,9 +53,7 @@ print(data['Postal Code'][0])
 
 import requests, json
 
-API_KEY = "cf312c3203aee8bb79eb8f7451924a72" ##
-## API_KEY = "b161b4155add0efffae9a602b927aac8" ##
-## API_KEY = "bbcf971ae98ba112215dbda5a2a5fb10" ##
+API_KEY = ###############################
 BASE_URL = "http://api.openweathermap.org/data/2.5/weather"
 
 def get_avg_temperature(zip_code, country_code="us"):
